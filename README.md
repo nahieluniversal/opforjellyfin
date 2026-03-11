@@ -78,6 +78,26 @@ MacOS / Linux:
 
 3. Run with `./opfor --help` to get started.
 
+NixOs:
+1. Add this to your flake inputs:
+   ```nix
+   opforjellyfin = {
+    url = "github:tissla/opforjellyfin";
+   #Optional, if you aren't in nix unstable channel and you get an error remove this line
+    inputs.nixpkgs.follows = "nixpkgs";
+    };
+   ```
+2. Add it to your packages; here's an example:
+   ```nix
+   { pkgs, system, opforjellyfin, ... }:
+   #x86_64 only at the moment
+   {
+     environment.systemPackages = [
+       (opforjellyfin.packages.${system}.default)
+      ];
+   }
+   ```
+
 Windows:
 
 1. Download the .exe file.
