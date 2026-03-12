@@ -3,17 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs }: {
-    packages = {
-      x86_64-linux = {
-        default = let
-          pkgs = import nixpkgs {
-            system = "x86_64-linux";
-          };
-        in pkgs.callPackage ./default.nix { };
-      };
-    };
-  };
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+      in {
+        packages.default = pkgs.callPackage ./default.nix { };
+      }
+    );
 }
