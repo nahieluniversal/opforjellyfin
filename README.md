@@ -78,7 +78,7 @@ MacOS / Linux:
 
 3. Run with `./opfor --help` to get started.
 
-NixOs:
+NixOS:
 1. Add this to your flake inputs:
    ```nix
    opforjellyfin = {
