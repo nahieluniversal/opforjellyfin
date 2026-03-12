@@ -89,11 +89,11 @@ NixOs:
    ```
 2. Add it to your packages; here's an example:
    ```nix
-   { pkgs, system, opforjellyfin, ... }:
+   { pkgs, inputs, ... }:
    #x86_64 only at the moment
    {
      environment.systemPackages = [
-       (opforjellyfin.packages.${system}.default)
+       (inputs.opforjellyfin.packages.${pkgs.system}.default)
       ];
    }
    ```
