@@ -15,6 +15,10 @@ buildGoModule rec {
   nativeBuildInputs = [ git ];
   propagatedBuildInputs = [ git ];
 
+  postInstall = ''
+    mv $out/bin/opforjellyfin $out/bin/opfor
+  '';
+
   meta = with lib; {
     description = "CLI to automate download and organisation of One Pace episodes for Jellyfin";
     homepage = "https://github.com/tissla/opforjellyfin";

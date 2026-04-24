@@ -2,7 +2,7 @@
   description = "OpforJellyfin is a CLI tool to automate the download and organization of One Pace episodes for Jellyfin.";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";  # o un commit específico
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
