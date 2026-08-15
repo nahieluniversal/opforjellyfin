@@ -2,12 +2,12 @@
 
 buildGoModule rec {
   pname = "opforjellyfin";
-  version = "1.0.1";
+  version = "1.1.0";
 
   src = fetchFromGitHub {
     owner = "tissla";
     repo = "opforjellyfin";
-    rev = "d6133d89836c9c727438794ab634f6a2b1184540";
+    rev = "7bb22b7b547256366ee83ddfb6e9360eb02603a2";
     hash = "sha256-lSB+F7heenXEmr6T+PKTRC9ZLEPGMcG5nEtVTzJUe+A=";
   };
 
