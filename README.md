@@ -12,23 +12,22 @@ CLI-tool to automate download and organisation of [One Pace](https://onepace.net
 
 # 📢 NEWS 
 
-## Current known issues (v1.0.1):
+## Opfor 1.1.0 release!
+I've taken the time to finally update!
+Notable new features/bugfixes:
+1. Seeder-mode
+2. Quality filters
+3. Search-result caching
+4. Further concurrency issue fixes 
+5. A bug where 'sync' would spam missing metadata shamelessly
+6. Download progress bars would sometimes swap places mid-download, making the CLI look glitchy
 
-### Videos getting sorted into strayfolder?
-There are some issues with concurrency due to workers simultaneously trying to create directories. 
-This is fixed for next release.
-
-### Have-tag not working?
-The Have-tag does not work for bundles in this release. This is due to a misnamed variable. 
-This is fixed for next release.
+And more!
+Don't hesitate to post issues as you find them.
 
 ## Future plans:
 
 1. 'sort' command - To target a directory containing files, and renaming/sorting them into your metadata directory.
-
-2. Cache for downloadKeys. This will prevent mismatches between 'list' and 'download'.
-
-3. Seeder-mode.
 
 ## 📸 Examples
 
@@ -68,7 +67,7 @@ You can choose to either use one of the released versions or build from source y
 
 For this program to work, you need to have 'git' installed.
 
-### [Releases](https://github.com/tissla/opforjellyfin/releases/tag/v1.0.0)
+### [Releases](https://github.com/tissla/opforjellyfin/releases/tag/v1.1.0)
 
 MacOS / Linux:
 

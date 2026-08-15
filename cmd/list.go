@@ -34,7 +34,7 @@ var listCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		spinner := ui.NewMultirowSpinner(ui.Animations["Searcher"], 4)
 
-		cfg := shared.LoadConfig()
+		cfg, _ := shared.LoadConfig()
 
 		if cfg.Source.BaseURL == "" {
 			spinner.Stop()
@@ -67,7 +67,7 @@ var listCmd = &cobra.Command{
 
 		spinner.Stop()
 
-		fmt.Println("📚 Filtered Download List:\n")
+		fmt.Println("📚 Filtered Download List:")
 		for _, t := range filtered {
 			if verboseList {
 				renderVerboseRow(t)

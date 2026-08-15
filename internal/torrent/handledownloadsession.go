@@ -16,9 +16,13 @@ import (
 	"time"
 )
 
-func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
-	// based on tests
-	const maxConcurrent = 5
+// MaxConcurrent is the number of torrents downloaded (or, with seed=true,
+// downloaded-and-seeded) at once. With seed=true, a worker never returns to
+// pick up more work until the whole session is stopped (Ctrl+C) - so at most
+// MaxConcurrent of the requested entries will ever start seeding in one run.
+const MaxConcurrent = 5
+
+func HandleDownloadSession(entries []shared.TorrentEntry, outDir string, seed bool) {
 
 	// Create a context that can be cancelled with Ctrl+C
 	ctx, cancel := context.WithCancel(context.Background())
@@ -29,7 +33,7 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		logger.Log(true, "\n🛑 Received interrupt signal, cancelling downloads...")
+		logger.Log(true, "\n❌ Received interrupt signal, cancelling downloads...")
 		cancel()
 	}()
 
@@ -46,7 +50,6 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 			Title:        fmt.Sprintf("%s: %s (%s)", dKey, title, entry.Quality),
 			TorrentID:    entry.TorrentID,
 			FullTitle:    entry.Title,
-			Started:      time.Now(),
 			ChapterRange: entry.ChapterRange,
 		}
 
@@ -70,7 +73,7 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 
 	// Start worker goroutines
 	var wg sync.WaitGroup
-	for w := 0; w < maxConcurrent; w++ {
+	for w := 0; w < MaxConcurrent; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -81,12 +84,17 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 				default:
 					td := allTDs[i]
 
-					// Download
-					downloadCtx, downloadCancel := context.WithTimeout(ctx, 30*time.Minute)
-					err := StartTorrent(downloadCtx, td)
-					downloadCancel()
+					// Download (and, if seed is set, keep uploading afterward
+					// until ctx is cancelled - StartTorrent blocks for that).
+					err := StartTorrent(ctx, td, seed)
 
-					if err != nil {
+					// A cancel that arrives *after* the download already
+					// finished just means the user stopped a --seed session -
+					// that's a successful download and should still be
+					// placed, not treated as a failure.
+					seedingStoppedAfterSuccess := err == context.Canceled && td.Done
+
+					if err != nil && !seedingStoppedAfterSuccess {
 						if err == context.DeadlineExceeded {
 							logger.Log(true, "Download timeout for %s (no progress in 30 min)", td.Title)
 							td.PlacementProgress = "❌ Timeout - no seeders?"
@@ -101,8 +109,12 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 						continue
 					}
 
+					tmpBase, err := shared.GetTempDir()
+					if err != nil {
+						logger.Log(false, "failed to find temp dir: %v", err)
+					}
 					// Place immediately after download completes
-					tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("opfor-tmp-%d", td.TorrentID))
+					tmpDir := filepath.Join(tmpBase, fmt.Sprintf("opfor-tmp-%d", td.TorrentID))
 					matcher.ProcessTorrentFiles(tmpDir, outDir, td, metadataIndex)
 
 					// Clean up temp directory immediately
@@ -151,7 +163,7 @@ func HandleDownloadSession(entries []shared.TorrentEntry, outDir string) {
 	shared.ClearActiveDownloads()
 
 	if ctx.Err() != nil {
-		logger.Log(true, "\n❌ Downloads cancelled by user.")
+		logger.Log(true, "\n❌ Downloads cancelled.")
 	} else {
 		logger.Log(true, "\n✅ All downloads finished and placed.")
 	}

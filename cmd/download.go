@@ -16,6 +16,7 @@ import (
 
 var (
 	forceKey string
+	seed     bool
 )
 
 var downloadCmd = &cobra.Command{
@@ -31,7 +32,7 @@ var downloadCmd = &cobra.Command{
 			return
 		}
 
-		cfg := shared.LoadConfig()
+		cfg, _ := shared.LoadConfig()
 		if cfg.TargetDir == "" {
 			logger.Log(true, "⚠️ No target directory set. Use 'setDir <path>' first.")
 			return
@@ -41,9 +42,9 @@ var downloadCmd = &cobra.Command{
 			logger.Log(true, "No valid scraper configuration found. Please run 'sync'")
 		}
 
-		torrentList, err := scraper.FetchTorrents(cfg)
+		searchCache, err := scraper.LoadSearchCache()
 		if err != nil {
-			logger.Log(true, "❌ Error scraping torrents. Site inaccessible? %v", err)
+			logger.Log(true, "❌ Error loading search cache. Did you run 'list'? - %v", err)
 			return
 		}
 
@@ -59,7 +60,7 @@ var downloadCmd = &cobra.Command{
 
 			// sort
 			var match *shared.TorrentEntry
-			for _, t := range torrentList {
+			for _, t := range searchCache.Results {
 				if t.DownloadKey == num {
 					if match == nil || t.Seeders > match.Seeders {
 						tmp := t
@@ -95,14 +96,19 @@ var downloadCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
+		if seed && len(matches) > torrent.MaxConcurrent {
+			logger.Log(true, "⚠️  --seed with more than %d keys: only the first %d will start at all this run - a seeding worker never frees up to pick up the rest until you stop with Ctrl+C.", torrent.MaxConcurrent, torrent.MaxConcurrent)
+		}
+
 		// outsourced to monitoring function
-		torrent.HandleDownloadSession(matches, cfg.TargetDir)
+		torrent.HandleDownloadSession(matches, cfg.TargetDir, seed)
 
 	},
 }
 
 func init() {
 	downloadCmd.Flags().StringVar(&forceKey, "forcekey", "", "Override chapter range (only for single downloadKey)")
+	downloadCmd.Flags().BoolVar(&seed, "seed", false, "Keep seeding downloaded torrents until you stop the program (Ctrl+C)")
 
 	rootCmd.AddCommand(downloadCmd)
 }

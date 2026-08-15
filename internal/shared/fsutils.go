@@ -1,11 +1,13 @@
 package shared
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"opforjellyfin/internal/logger"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -14,12 +16,42 @@ var (
 	dirMutex sync.Mutex
 )
 
+// helper for tempdir
+func GetTempDir() (string, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return "", err
+	}
+
+	if cfg.TargetDir == "" {
+		return "", errors.New("No target dir set")
+	}
+	tmpDir := filepath.Join(cfg.TargetDir, ".opfor-tmp")
+
+	if _, err := os.Stat(tmpDir); err == nil {
+		return tmpDir, nil
+	}
+
+	//create if not exists
+	err = os.MkdirAll(tmpDir, 0755)
+	if err != nil {
+		return "", err
+	}
+
+	return tmpDir, nil
+
+}
+
 // CreateTempTorrentDir safely creates a temporary directory for torrent downloads
 func CreateTempTorrentDir(torrentID int) (string, error) {
 	dirMutex.Lock()
 	defer dirMutex.Unlock()
 
-	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("opfor-tmp-%d", torrentID))
+	tmpBase, err := GetTempDir()
+	if err != nil {
+		return "", err
+	}
+	tmpDir := filepath.Join(tmpBase, fmt.Sprintf("opfor-tmp-%d", torrentID))
 
 	// Check if it already exists
 	if info, err := os.Stat(tmpDir); err == nil && info.IsDir() {
@@ -28,7 +60,7 @@ func CreateTempTorrentDir(torrentID int) (string, error) {
 	}
 
 	// Create with MkdirAll (safe for concurrent calls)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err = os.MkdirAll(tmpDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
@@ -37,34 +69,34 @@ func CreateTempTorrentDir(torrentID int) (string, error) {
 }
 
 // SafeMoveFile moves a file safely, creates the directory if it does not exist
-// This function is thread-safe and handles concurrent file operations
+// This function should be thread-safe and handle concurrent file operations
 func SafeMoveFile(src, dst string) error {
 	// Lock for the entire move operation to ensure atomicity
 	dirMutex.Lock()
 	defer dirMutex.Unlock()
 
-	logger.Log(false, "sfm: starting move from %s to %s", src, dst)
+	logger.Log(false, "smf: starting move from %s to %s", src, dst)
 
 	// Ensure destination directory exists
 	dstDir := filepath.Dir(dst)
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		logger.Log(true, "sfm: failed to create dst dir: %v", err)
+		logger.Log(true, "smf: failed to create dst dir: %v", err)
 		return err
 	}
 
-	logger.Log(false, "sfm: copying file from %s to %s", src, dst)
+	logger.Log(false, "smf: copying file from %s to %s", src, dst)
 	if err := copyFileInternal(src, dst, 0644); err != nil {
-		logger.Log(true, "sfm: copyFile failed: %v", err)
+		logger.Log(true, "smf: copyFile failed: %v", err)
 		return err
 	}
-	logger.Log(false, "sfm: copyFile succeeded")
+	logger.Log(false, "smf: copyFile succeeded")
 
-	logger.Log(false, "sfm: removing source file: %s", src)
+	logger.Log(false, "smf: removing source file: %s", src)
 	if err := os.Remove(src); err != nil {
-		logger.Log(true, "sfm: failed to remove src: %v", err)
+		logger.Log(true, "smf: failed to remove src: %v", err)
 		return err
 	}
-	logger.Log(false, "sfm: source file removed")
+	logger.Log(false, "smf: source file removed")
 
 	return nil
 }
@@ -126,7 +158,54 @@ func SyncDir(src, dst string) error {
 	dirMutex.Lock()
 	defer dirMutex.Unlock()
 
-	return walkAndCopyInternal(src, dst, true)
+	if err := walkAndCopyInternal(src, dst, true); err != nil {
+		return err
+	}
+
+	warnStaleMetadataFiles(src, dst)
+	return nil
+}
+
+// warnStaleMetadataFiles reports .nfo files present locally under dst that no
+// longer exist in the upstream src tree (e.g. the metadata repo renamed or
+// removed an episode). It only reports - it never deletes anything, since dst
+// also holds user-downloaded video files that this must never touch.
+func warnStaleMetadataFiles(src, dst string) {
+	err := filepath.Walk(dst, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if info.IsDir() {
+			// .opfor-tmp (the in-progress clone, including src itself) lives
+			// inside dst - walking into it would compare every freshly
+			// cloned NFO against itself under a doubly-nested path and
+			// falsely report all of them as stale. Skip dotdirs entirely.
+			if strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if !strings.HasSuffix(strings.ToLower(info.Name()), ".nfo") {
+			return nil
+		}
+
+		relPath, relErr := filepath.Rel(dst, path)
+		if relErr != nil {
+			return nil
+		}
+
+		if !FileExists(filepath.Join(src, relPath)) {
+			logger.Log(true, "⚠️  %s no longer exists in the metadata repo (kept locally - review manually)", relPath)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logger.Log(false, "warnStaleMetadataFiles: walk failed: %v", err)
+	}
 }
 
 // walkAndCopyInternal is the internal non-locked version

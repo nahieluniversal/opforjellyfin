@@ -24,18 +24,25 @@ func BuildMetadataIndex(baseDir string) error {
 }
 
 // FetchAllMetadata clones and indexes metadata from GitHub.
-func FetchAllMetadata(baseDir string, cfg shared.Config) error {
-	return cloneAndCopyRepo(baseDir, cfg, false)
+func FetchAllMetadata(cfg *shared.Config) error {
+	return cloneAndCopyRepo(cfg, false)
 }
 
 // SyncMetadata clones and syncs metadata updates from GitHub.
-func SyncMetadata(baseDir string, cfg shared.Config) error {
-	return cloneAndCopyRepo(baseDir, cfg, true)
+func SyncMetadata(cfg *shared.Config) error {
+	return cloneAndCopyRepo(cfg, true)
 }
 
 // Main dataobtainer, builds or rebuilds index when complete.
-func cloneAndCopyRepo(baseDir string, cfg shared.Config, syncOnly bool) error {
-	tmpDir := filepath.Join(os.TempDir(), "repo-tmp")
+func cloneAndCopyRepo(cfg *shared.Config, syncOnly bool) error {
+
+	baseDir := cfg.TargetDir
+
+	tmpBase, err := shared.GetTempDir()
+	if err != nil {
+		return err
+	}
+	tmpDir := filepath.Join(tmpBase, "repo-tmp")
 	defer os.RemoveAll(tmpDir)
 
 	repo := fmt.Sprintf("https://github.com/%s.git", cfg.GitHubRepo)
@@ -44,14 +51,13 @@ func cloneAndCopyRepo(baseDir string, cfg shared.Config, syncOnly bool) error {
 
 	spinner := ui.NewSpinner("🗃️ Downloading.. ", ui.Animations["MetaFetcher"])
 
-	if err := exec.Command("git", "clone", "--depth=1", repo, tmpDir).Run(); err != nil {
+	if err = exec.Command("git", "clone", "--depth=1", repo, tmpDir).Run(); err != nil {
 		spinner.Stop()
 		fmt.Println("⚠️  Git clone failed: %w", err)
-		return fmt.Errorf("git clone failed: %w", err)
+		return err
 	}
 
 	srcDir := filepath.Join(tmpDir, "One Pace")
-	var err error
 
 	if syncOnly {
 		err = shared.SyncDir(srcDir, baseDir)
@@ -61,15 +67,32 @@ func cloneAndCopyRepo(baseDir string, cfg shared.Config, syncOnly bool) error {
 
 	if err != nil {
 		spinner.Stop()
-		return fmt.Errorf("failed to copy metadata: %w", err)
+		return err
 	}
 
-	if err := BuildMetadataIndex(baseDir); err != nil {
+	// If the metadata repo ships its own pre-built metadata-index.json inside
+	// "One Pace", CopyDir/SyncDir already copied it into baseDir above - use it
+	// directly instead of re-deriving it from every .nfo file via regex on this
+	// machine. Falls back to building it locally for repos that don't ship one.
+	if shared.FileExists(filepath.Join(srcDir, "metadata-index.json")) {
+		logger.Log(false, "metadata: using prebuilt metadata-index.json shipped by the repo")
+		if err := loadIndexIntoCache(baseDir); err != nil {
+			spinner.Stop()
+			return err
+		}
+	} else if err := BuildMetadataIndex(baseDir); err != nil {
 		spinner.Stop()
-		return fmt.Errorf("failed to build metadata index: %w", err)
+		return err
 	}
 
-	updateConfig(tmpDir, cfg)
+	if err := loadSourceConfig(tmpDir, cfg); err != nil {
+		logger.Log(false, "metadata: could not load scraper config from repo: %v", err)
+	}
+
+	if err := shared.SaveConfig(*cfg); err != nil {
+		spinner.Stop()
+		return fmt.Errorf("could not save config: %w", err)
+	}
 
 	spinner.Stop()
 
@@ -80,16 +103,22 @@ func cloneAndCopyRepo(baseDir string, cfg shared.Config, syncOnly bool) error {
 	return nil
 }
 
-func updateConfig(tmpDir string, cfg shared.Config) {
+// loadSourceConfig reads config.json from the freshly cloned metadata repo and
+// populates cfg.Source (the scraper's site config) with it, so switching trackers
+// is a config change in the metadata repo rather than a code change here.
+func loadSourceConfig(tmpDir string, cfg *shared.Config) error {
 	cfgFile := filepath.Join(tmpDir, "config.json")
 
-	data, _ := os.ReadFile(cfgFile)
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("could not read %s: %w", cfgFile, err)
+	}
 
 	var srcConfig shared.ScraperConfig
 	if err := json.Unmarshal(data, &srcConfig); err != nil {
-		logger.Log(false, "Error updating source config: %v", err)
+		return fmt.Errorf("could not parse %s: %w", cfgFile, err)
 	}
 
 	cfg.Source = srcConfig
-	shared.SaveConfig(cfg)
+	return nil
 }

@@ -12,3 +12,6 @@ config.json
 testDir
 unused.old
 result
+issues
+.search_cache.json
+search_cache.json

@@ -29,19 +29,25 @@ func SetDir(dir string, force bool) {
 		log.Fatalf("❌ Invalid directory: %v", err)
 	}
 
-	cfg := shared.LoadConfig()
+	cfg, err := shared.LoadConfig()
+	if err != nil {
+		log.Fatalf("❌ Could not load config: %v", err)
+	}
+
 	cfg.TargetDir = abs
-	shared.SaveConfig(cfg)
+	if err := shared.SaveConfig(*cfg); err != nil {
+		log.Fatalf("❌ Could not save config: %v", err)
+	}
 
 	fmt.Println("✅ Default target directory set to:", abs)
 
 	if force {
-		err := metadata.FetchAllMetadata(abs, cfg)
+		err := metadata.FetchAllMetadata(cfg)
 		if err != nil {
 			fmt.Println("⚠️  Unable to sync metadata. (Is git installed?)")
 		}
 	} else {
-		err := metadata.SyncMetadata(abs, cfg)
+		err := metadata.SyncMetadata(cfg)
 		if err != nil {
 			fmt.Println("⚠️  Unable to sync metadata. (Is git installed?)")
 		}

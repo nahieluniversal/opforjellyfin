@@ -13,17 +13,24 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 )
 
-// main torrent download and tracker
-func StartTorrent(ctx context.Context, td *shared.TorrentDownload) error {
+// main torrent download and tracker. When seed is true, the client keeps
+// uploading after the download finishes until ctx is cancelled (Ctrl+C) -
+// the caller is responsible for not treating that as a failure.
+func StartTorrent(ctx context.Context, td *shared.TorrentDownload, seed bool) error {
+	config, err := shared.LoadConfig()
+	if err != nil {
+		return err
+	}
+	srcBaseURL := config.Source.BaseURL
 	// get torrent meta-info
-	torrentURL := fmt.Sprintf("%s/download/%d.torrent", shared.LoadConfig().Source.BaseURL, td.TorrentID)
-	logger.Log(false, "Fetching torrent: %s, ID: %s", torrentURL, td)
+	torrentURL := fmt.Sprintf("%s/download/%d.torrent", srcBaseURL, td.TorrentID)
+	logger.Log(false, "Fetching torrent: %s, ID: %s", torrentURL, td.Title)
 
 	// get metadata
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, torrentURL, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		logger.Log(false, "HTTP request for metadata failed %s", td)
+		logger.Log(false, "HTTP request for metadata failed %s", td.Title)
 		return err
 	}
 	defer resp.Body.Close()
@@ -43,7 +50,8 @@ func StartTorrent(ctx context.Context, td *shared.TorrentDownload) error {
 	// start the torrent-client with optimized settings for concurrent downloads
 	cfg := torrent.NewDefaultClientConfig()
 	cfg.DataDir = tmpDir
-	cfg.NoUpload = true
+	cfg.NoUpload = !seed
+	cfg.Seed = seed // upload even once we have nothing left to gain ourselves
 	cfg.ListenPort = 0
 
 	client, err := torrent.NewClient(cfg)
@@ -62,7 +70,7 @@ func StartTorrent(ctx context.Context, td *shared.TorrentDownload) error {
 	select {
 	case <-t.GotInfo():
 		td.TotalSize = t.Length()
-		logger.Log(false, "Torrent metadata loaded: %s", td)
+		logger.Log(false, "Torrent metadata loaded: %s", td.Title)
 	case <-time.After(20 * time.Second):
 		return fmt.Errorf("timeout waiting for torrent metadata")
 	case <-ctx.Done():
@@ -74,14 +82,19 @@ func StartTorrent(ctx context.Context, td *shared.TorrentDownload) error {
 	t.DownloadAll()
 	shared.SaveTorrentDownload(td)
 
-	// watch progress, save to activefile
+	// watch progress, save to activefile. Bounded independently of the
+	// caller's ctx so a stalled download times out even during a --seed run,
+	// without also capping how long seeding is allowed to continue below.
+	downloadCtx, downloadCancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer downloadCancel()
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for t.BytesMissing() > 0 {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-downloadCtx.Done():
+			return downloadCtx.Err()
 		case <-ticker.C:
 			td.Progress = t.BytesCompleted()
 			shared.SaveTorrentDownload(td)
@@ -95,7 +108,15 @@ func StartTorrent(ctx context.Context, td *shared.TorrentDownload) error {
 	td.Done = true
 	td.PlacementProgress = "⏳ Waiting to place.."
 	shared.SaveTorrentDownload(td)
-	logger.Log(false, "Download complete: %s", td)
+	logger.Log(false, "Download complete: %s", td.Title)
+
+	if seed {
+		td.PlacementProgress = "🌱 Seeding until stopped (Ctrl+C)..."
+		shared.SaveTorrentDownload(td)
+		<-ctx.Done()
+		logger.Log(false, "Stopped seeding: %s", td.Title)
+		return ctx.Err()
+	}
 
 	return nil
 }
