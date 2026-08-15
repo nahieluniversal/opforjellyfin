@@ -8,7 +8,7 @@ buildGoModule rec {
     owner = "tissla";
     repo = "opforjellyfin";
     rev = "7bb22b7b547256366ee83ddfb6e9360eb02603a2";
-    hash = "sha256-lSB+F7heenXEmr6T+PKTRC9ZLEPGMcG5nEtVTzJUe+A=";
+    hash = "sha256-FlSc776Q6DLLBWGYkxCg1vkJlyLm3dkEtGsLbn3b20w=";
   };
 
   vendorHash = "sha256-PL42t4SywbXmpPtetau03AsTHAGmhOrajsSyF4LJwUU=";
