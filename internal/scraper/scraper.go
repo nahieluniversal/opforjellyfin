@@ -1,4 +1,4 @@
-// scraper/scraper.go
+// Package scraper
 package scraper
 
 import (
@@ -23,7 +23,7 @@ import (
 // tracker doesn't stall FetchTorrents' unbounded pagination loop forever.
 const requestTimeout = 15 * time.Second
 
-// gets the torrents using current config, throws error if no valid config found
+// FetchTorrents gets the torrents using current config, throws error if no valid config found
 func FetchTorrents(cfg *shared.Config) ([]shared.TorrentEntry, error) {
 	//prep
 
@@ -134,9 +134,9 @@ func parseRow(s *goquery.Selection, config *shared.ScraperConfig, baseURL string
 		torrentLink = baseURL + torrentLink
 	}
 
-	metaDataAvail := metadata.HaveMetadata(chapterRange)
+	metaDataAvail := metadata.HaveMetadata(title)
 
-	videoStatus := metadata.HaveVideoStatus(chapterRange)
+	videoStatus := metadata.HaveVideoStatus(title)
 
 	return shared.TorrentEntry{
 		Title:         title,

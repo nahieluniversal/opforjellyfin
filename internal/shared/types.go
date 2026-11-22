@@ -2,14 +2,13 @@ package shared
 
 // TODO: cleanup unused properties
 
-// config file
 type Config struct {
 	TargetDir  string        `json:"target_dir"`
 	GitHubRepo string        `json:"github_base_url"`
 	Source     ScraperConfig `json:"source"`
+	Thumbnails bool          `json:"thumbnails"`
 }
 
-// scrape config
 type ScraperConfig struct {
 	Name               string           `json:"name"`
 	BaseURL            string           `json:"base_url"`
@@ -32,24 +31,26 @@ type ValidationConfig struct {
 	RequiredInTitle string `json:"required_in_title"`
 }
 
-// Index maps seasons
 type MetadataIndex struct {
-	Seasons map[string]SeasonIndex `json:"seasons"`
+	ByFilename map[string]string       `json:"by_filename"`
+	Entries    map[string]MetadataFile `json:"entries"`
+	Arcs       map[string]MetadataArc  `json:"arcs"`
 }
 
-// seasons maps episodes
-type SeasonIndex struct {
-	Range        string                 `json:"range"`
-	Name         string                 `json:"name"`
-	EpisodeRange map[string]EpisodeData `json:"episodes"`
+type MetadataFile struct {
+	NFOPath   string `json:"nfo_path"`
+	EpisodeID string `json:"episode_id"`
+	Kind      string `json:"kind"`
+	Variant   string `json:"variant"`
 }
 
-// episodes maps titles and have
-type EpisodeData struct {
-	Title string `json:"title"`
+type MetadataArc struct {
+	Folder       string `json:"folder"`
+	Name         string `json:"name"`
+	SeasonNumber int    `json:"season_number"`
 }
 
-// download struct
+// TorrentDownload download struct
 type TorrentDownload struct {
 	Title             string   // title for display
 	FullTitle         string   // full torrent title
@@ -61,21 +62,24 @@ type TorrentDownload struct {
 	PlacementProgress string   //used for placement messages after download is done
 	Done              bool     // set to true when torrent is downloaded
 	Placed            bool     // set to true when files are placed, before clearing active downloads
+	VideoPaths        []string // actual files listed by the torrent
 }
 
-// entry for dl
+// TorrentEntry entry for dl
 type TorrentEntry struct {
 	Title         string // full title
 	Quality       string // parsed quality
 	DownloadKey   int    // download key set by rawIndex
 	TorrentName   string // for display
 	Seeders       int    // number of seeders
-	RawIndex      int    // RawIndex is based on ChapterRange, used for placement
+	RawIndex      int    // sort order in search results
 	TorrentLink   string // torrent link
 	TorrentID     int    // torrent ID, extracted from link
 	ChapterRange  string // torrent chapter range
-	MetaDataAvail bool   // metadata matching chapter range exists
+	MetaDataAvail bool   // metadata exists for the episode or arc title
 	IsSpecial     bool   // is a special (no chapter range)
-	HaveIt        int    // video with same chapter range exists
+	HaveIt        int    // 0 = none, 1 = some, 2 = all
 	Date          string //
+
+	SelectedFiles []string `json:"-"` // nil selects all .mkv and .mp4 files
 }

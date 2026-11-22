@@ -6,25 +6,52 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 )
 
 var (
-	activeDownloads = make(map[int]*TorrentDownload)
+	activeDownloads = make(map[int]TorrentDownload)
 	mu              sync.RWMutex
+	totalVideos     int
+	placedVideos    int
 )
+
+func SetDownloadTotal(total int) {
+	mu.Lock()
+	defer mu.Unlock()
+	totalVideos, placedVideos = total, 0
+}
+
+func RecordPlacedVideo() {
+	mu.Lock()
+	defer mu.Unlock()
+	if placedVideos < totalVideos {
+		placedVideos++
+	}
+}
+
+func GetDownloadProgress() (placed, total int) {
+	mu.RLock()
+	defer mu.RUnlock()
+	return placedVideos, totalVideos
+}
 
 func SaveTorrentDownload(td *TorrentDownload) {
 	mu.Lock()
 	defer mu.Unlock()
-	existing, ok := activeDownloads[td.TorrentID]
-	if ok {
-		*existing = *td // overwrite
-	} else {
-		activeDownloads[td.TorrentID] = td
-	}
+	snapshot := *td
+	snapshot.PlacementFull = slices.Clone(td.PlacementFull)
+	snapshot.VideoPaths = slices.Clone(td.VideoPaths)
+	activeDownloads[td.TorrentID] = snapshot
+}
+
+func RemoveActiveDownload(id int) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(activeDownloads, id)
 }
 
 func GetActiveDownloads() []*TorrentDownload {
@@ -33,7 +60,10 @@ func GetActiveDownloads() []*TorrentDownload {
 
 	var list []*TorrentDownload
 	for _, td := range activeDownloads {
-		list = append(list, td)
+		snapshot := td
+		snapshot.PlacementFull = slices.Clone(td.PlacementFull)
+		snapshot.VideoPaths = slices.Clone(td.VideoPaths)
+		list = append(list, &snapshot)
 	}
 
 	// Sort by ChapterRange, then by TorrentID as a deterministic tiebreak.
@@ -47,12 +77,12 @@ func GetActiveDownloads() []*TorrentDownload {
 	return list
 }
 
-// clear cache and remove temp download directories
+// Clear in-memory download state; unfinished files remain available for retry.
 func ClearActiveDownloads() {
 	mu.Lock()
 	defer mu.Unlock()
-	activeDownloads = make(map[int]*TorrentDownload)
-	CleanupTempDirs()
+	activeDownloads = make(map[int]TorrentDownload)
+	totalVideos, placedVideos = 0, 0
 }
 
 func CleanupTempDirs() error {

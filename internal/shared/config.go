@@ -1,4 +1,4 @@
-// shared/config.go
+// Package shared
 package shared
 
 import (
@@ -9,9 +9,21 @@ import (
 	"sync"
 )
 
+const MetadataRepo = "tissla/opfor-metadata-barrys"
+
+var defaultSource = ScraperConfig{
+	Name: "nyaa", BaseURL: "https://nyaa.si",
+	SearchPathTemplate: "/?f=0&c=1_2&q=%s&p=%d", SearchQuery: "one+pace",
+	RowSelector: "table tbody tr",
+	Fields:      ScraperFields{Title: "td:nth-child(2) a:last-child", Seeders: "td:nth-child(6)", TorrentLink: "td:nth-child(3) a[href^='/download/']", TorrentID: `/download/(\d+)`, UploadDate: "td:nth-child(5)"},
+	Validation:  ValidationConfig{RequiredInTitle: "one pace"},
+}
+
 var defaultCfg = Config{
 	TargetDir:  "",
-	GitHubRepo: "tissla/one-pace-jellyfin",
+	GitHubRepo: MetadataRepo,
+	Source:     defaultSource,
+	Thumbnails: false,
 }
 
 var (
@@ -20,7 +32,7 @@ var (
 	configLoadError error
 )
 
-// loads config-file file, creates it if it does not exist
+// LoadConfig loads config-file file, creates it if it does not exist
 func LoadConfig() (*Config, error) {
 
 	configLoadOnce.Do(func() {
@@ -35,6 +47,10 @@ func LoadConfig() (*Config, error) {
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			configLoadError = err
 		}
+		cfg.GitHubRepo = MetadataRepo
+		if cfg.Source.BaseURL == "" {
+			cfg.Source = defaultSource
+		}
 		globalConfig = &cfg
 	})
 
@@ -45,7 +61,7 @@ func LoadConfig() (*Config, error) {
 	return globalConfig, nil
 }
 
-// writes static config file from config object, as json
+// SaveConfig writes static config file from config object, as json
 func SaveConfig(cfg Config) error {
 	path := getConfigPath()
 
@@ -63,7 +79,7 @@ func SaveConfig(cfg Config) error {
 	return nil
 }
 
-// creates default config if no config-file is found
+// EnsureConfigExists creates default config if no config-file is found
 func EnsureConfigExists() string {
 	path := getConfigPath()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -74,14 +90,12 @@ func EnsureConfigExists() string {
 	return path
 }
 
-// returns the config filepath from the OS's default config directory
+// getConfigPath returns the config filepath from the OS's default config directory
 func getConfigPath() string {
 	return filepath.Join(ConfigDir(), "config.json")
 }
 
-// ConfigDir returns the app's config directory (creating it if needed), so other
-// packages can place their own per-user files (e.g. the search cache) next to
-// config.json instead of relying on the process's working directory.
+// ConfigDir returns the app's config directory
 func ConfigDir() string {
 	dirname, err := os.UserConfigDir()
 	if err != nil {
